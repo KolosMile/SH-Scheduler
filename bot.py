@@ -8,7 +8,7 @@ import json
 
 
 # Bot token beolvasása környezeti változóból (vagy beírhatod közvetlenül)
-TOKEN = "MTMzNjc2OTc1NTQ2NTY0NjIwMw.GC4t8A.n2Zf8Dx0oiSrKWVOhh0Z1ACppt-4Tl7cHuQHvU"  # vagy: TOKEN = "IDE_ÍRD_A_TOKENED"
+TOKEN = ""  # vagy: TOKEN = "IDE_ÍRD_A_TOKENED"
 
 # Fájl, ahová mentjük a missed_streak-et
 STORAGE_FILE = "missed_streak.json"
@@ -345,8 +345,13 @@ async def evaluate(ctx):
                             await mem.send("Elvesztetted az SH rangot (6/6 mulasztás).")
                         except:
                             pass
-                        # A korábbi channel üzenet helyett bekerül a lost_roles listába
                         lost_roles.append(mem.mention)
+                        # Töröljük a user adatait a missed_streak-ből és a reaction_data-ból
+                        if mem.id in missed_streak:
+                            del missed_streak[mem.id]
+                            save_missed_streak(missed_streak)
+                        if mem.id in reaction_data:
+                            del reaction_data[mem.id]
                     except discord.Forbidden:
                         await channel.send(f"Nem tudom levenni a rangot {mem.mention}-ről.")
                 elif s == 5:
