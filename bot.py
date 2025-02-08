@@ -46,8 +46,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 reaction_data = defaultdict(set)  # user_id -> {emoji1, emoji2, ...}
 missed_streak = load_missed_streak() # user_id -> missed_count
 daily_message_id = None  # Az utolsó kiküldött napi üzenet azonosítója
-schedule_channel_id = 1336779385017073806  # A "SH schedule" csatorna ID-ja (tesztszerveren)
-
+schedule_channel_id = 1337861261739823275  # A "SH schedule" csatorna ID-ja (tesztszerveren)
+role_id = 1337856047351595100
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
 
 # Azok a reakciók, amelyek IDŐPONTOT jelölnek
@@ -94,7 +94,7 @@ async def send(ctx):
     # Napi üzenet
     channel = bot.get_channel(schedule_channel_id)
     guild = channel.guild
-    role = discord.utils.get(guild.roles, name="SH")
+    role = guild.get_role(role_id)
     role_mention = role.mention if role else "@SH"
     text = (
         f"{role_mention} Ma ( {datetime.now().strftime('%Y-%m-%d')} ) "
@@ -229,16 +229,14 @@ async def member(ctx):
     # Először kinyerjük a guild-et (és a csatornát) a contextből, vagy a schedule_channel_id alapján
     channel = bot.get_channel(schedule_channel_id)
     guild = channel.guild
-    role_name = "SH"
-    role = discord.utils.get(guild.roles, name=role_name)
+    role = guild.get_role(role_id)
     for member in role.members:
             print(f"Checking member: {member.name}")
 
 @bot.command()
 async def checkall(ctx):
     guild = ctx.guild
-    role_name = "SH"
-    role = discord.utils.get(guild.roles, name=role_name)
+    role = guild.get_role(role_id)
     if not role:
         print("Nincs is ilyen szerep!")
         return
@@ -314,8 +312,7 @@ async def evaluate(ctx):
     #for role_ in guild.roles:
     #    print(f"Role found: {role_.name}")
 
-    role_name = "SH"
-    role = discord.utils.get(guild.roles, name=role_name)
+    role = guild.get_role(role_id)
     for member in role.members:
             print(f"Checking member: {member.name}")
     
@@ -395,7 +392,7 @@ async def dm_reminder(ctx):
     """
     channel = bot.get_channel(schedule_channel_id)
     guild = channel.guild
-    role = discord.utils.get(guild.roles, name="SH")
+    role = guild.get_role(role_id)
 
     if not role:
         await ctx.send("Nincs SH szerep a szerveren!")
