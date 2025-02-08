@@ -194,7 +194,9 @@ async def on_raw_reaction_add(payload):
         user_reactions.add(emoji)
         print(f"[INFO] User {user_id} végleges reakcióhalmaz (time hozzáadva): {user_reactions}")
 
-        # Ha reagál, nullázzuk a streaket
+        if user_id not in missed_streak:
+            missed_streak[user_id] = 0
+
         if missed_streak[user_id] > 0:
             missed_streak[user_id] = 0
             print(f"[INFO] {user_id} streak nullázva (time reagál).")
