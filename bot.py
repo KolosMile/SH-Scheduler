@@ -8,7 +8,7 @@ import json
 
 
 # Bot token beolvasása környezeti változóból (vagy beírhatod közvetlenül)
-TOKEN = ""  # vagy: TOKEN = "IDE_ÍRD_A_TOKENED"
+TOKEN = "MTMzNjc2OTc1NTQ2NTY0NjIwMw.GMwQ68.tgC4_WczjEfWiJr2ZRY9pugvK7IwpWV5AXUhX0"  # vagy: TOKEN = "IDE_ÍRD_A_TOKENED"
 
 # Fájl, ahová mentjük a missed_streak-et
 STORAGE_FILE = "missed_streak.json"
