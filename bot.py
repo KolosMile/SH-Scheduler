@@ -140,8 +140,13 @@ async def on_raw_reaction_add(payload):
         user = await bot.fetch_user(user_id)
         await message.remove_reaction(emoji, user)
         return
-
-    if emoji not in REACTIONS:
+    
+    # Ha a reakció nincs a listában, töröljük
+    if emoji not in REACTIONS and emoji not in TIME_EMOJIS:
+        channel = bot.get_channel(payload.channel_id)
+        message = await channel.fetch_message(payload.message_id)
+        user = await bot.fetch_user(user_id)
+        await message.remove_reaction(emoji, user)
         return
 
     channel = bot.get_channel(payload.channel_id)
