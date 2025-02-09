@@ -1,0 +1,27 @@
+# Virtuális környezetek
+.venv/
+
+# Környezeti változók fájlja (érzékeny adatok)
+.env
+
+# Pycache és bytecode fájlok
+__pycache__/
+*.pyc
+*.pyo
+
+# Log fájlok
+*.log
+
+# Egyéb temp vagy ideiglenes fájlok
+*.tmp
+*.bak
+
+# IDE konfigurációk (VSCode, IntelliJ, stb.)
+.vscode/
+.idea/
+
+# Linux és Mac temp fájlok
+.DS_Store
+
+#Egyéb
+.missed_streak.json
