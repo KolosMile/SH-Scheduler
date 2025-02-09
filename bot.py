@@ -1,7 +1,7 @@
 import os
 import discord
 from discord.ext import commands, tasks
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from collections import defaultdict
 import asyncio
 import json
@@ -34,6 +34,7 @@ def save_missed_streak(missed_data):
         json.dump(missed_data, f, ensure_ascii=False, indent=2)
 
 intents = discord.Intents.default()
+intents.messages = True
 intents.message_content = True
 intents.reactions = True
 intents.guilds = True
@@ -46,9 +47,27 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 reaction_data = defaultdict(set)  # user_id -> {emoji1, emoji2, ...}
 missed_streak = load_missed_streak() # user_id -> missed_count
 daily_message_id = None  # Az utolsó kiküldött napi üzenet azonosítója
-schedule_channel_id = 1336779385017073806   #1337861261739823275 A "SH schedule" csatorna ID-ja (tesztszerveren)
-role_id = 1336764986344865895 # 1337856047351595100
+
+channel_ids = {
+    "Scheff": 1337861261739823275, 
+    "Test": 1336779385017073806
+    }
+
+role_ids = {
+    "Scheff": 1337856047351595100,
+    "Test": 1336764986344865895
+    }
+
+server = "Test"  # Teszt szerver
+schedule_channel_id = channel_ids[server]   # Az ütemezett üzenetek csatornája
+role_id = role_ids[server]  # Az SH rang ID-je
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
+
+message_time = {
+    "send": time(hour=1, minute=28, second=0), 
+    "reminder": time(hour=1, minute=28, second=15),
+    "evaluate": time(hour=1, minute=28, second=30)
+    }  # Az üzenet pontos időpontja
 
 # Azok a reakciók, amelyek IDŐPONTOT jelölnek
 TIME_EMOJIS = {"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"}
@@ -83,16 +102,13 @@ def reset_missed(user_id: int):
 
 # Minden nap 9:00-kor küldi ki a bot az üzenetet
 # Windows alatt (teszteléshez) manuálisan is meghívhatod ezt a függvényt parancsra, pl. !send
-@bot.command()
-async def send(ctx):
-    """Teszt parancs: azonnal elküldi a napi kérdést a kijelölt csatornába."""
+async def send_daily_message():
+    """Napi SH üzenet kiküldése"""
     channel = bot.get_channel(schedule_channel_id)
     if channel is None:
-        await ctx.send("Hibás csatorna ID vagy nem találom a csatornát.")
+        print("Hibás csatorna ID vagy nem található a csatorna.")
         return
-    
-    # Napi üzenet
-    channel = bot.get_channel(schedule_channel_id)
+        
     guild = channel.guild
     role = guild.get_role(role_id)
     role_mention = role.mention if role else "@SH"
@@ -109,19 +125,24 @@ async def send(ctx):
     )
     message = await channel.send(text)
     
-    # Tároljuk a message id-t
     global daily_message_id
     daily_message_id = message.id
     
-    # Ürítjük az előző adathalmazt (új nap, új adatok)
     global reaction_data
     reaction_data = {}
     
-    # A bot automatikusan hozzáadja a reakciókat
     for emoji in REACTIONS.keys():
         await message.add_reaction(emoji)
 
-    #await ctx.send("Napi SH üzenet elküldve.")
+@bot.command()
+async def send(ctx):
+    """Manuális parancs a napi üzenet kiküldéséhez"""
+    await send_daily_message()
+    
+@tasks.loop(time=message_time["send"])
+async def scheduled_send():
+    await send_daily_message()
+
 
 @bot.event
 async def on_raw_reaction_add(payload):
@@ -227,6 +248,162 @@ async def on_raw_reaction_remove(payload):
                 del reaction_data[user_id]
             print(f"[REMOVE] User {user_id} eltávolította {emoji} reakciót. Jelenlegi set: {reaction_data.get(user_id, set())}")
 
+
+async def evaluate_daily():
+    """Napi SH kiértékelése"""
+    channel = bot.get_channel(schedule_channel_id)
+    guild = channel.guild
+
+    counts = {}
+    emoji_users = defaultdict(list)
+
+    for user_id, emojis in reaction_data.items():
+        member = await guild.fetch_member(user_id)
+        if not member:
+            continue
+
+        for e in emojis:
+            counts[e] = counts.get(e, 0) + 1
+            emoji_users[e].append(member.mention)
+
+    summary = "A mai SH létszám:\n"
+    for emoji, time_str in REACTIONS.items():
+        c = counts.get(emoji, 0)
+        if c > 0:
+            user_list = emoji_users[emoji]
+            user_str = ", ".join(user_list)
+            summary += f"{time_str}: {c} fő ({user_str})\n"
+        else:
+            summary += f"{time_str}: 0 fő\n"
+    
+    role = guild.get_role(role_id)
+    if role is None:
+        summary += "\nNem találom a SH-résztvevő rangot."
+        return await channel.send(summary)
+
+    not_responded = []
+    for member in role.members:
+        if not member.bot and member.id not in reaction_data:
+            not_responded.append(member)
+
+    if not_responded:
+        entries = []
+        lost_roles = []
+
+        for mem in not_responded:
+            increment_missed(mem.id)
+            s = missed_streak[mem.id]
+            
+            if s >= 6:
+                try:
+                    await mem.remove_roles(role)
+                    await mem.send("Elvesztetted az SH rangot, egymást követő 6 alkalommal mulasztottad el a reagálást.")
+                    lost_roles.append(mem.mention)
+                    if mem.id in missed_streak:
+                        del missed_streak[mem.id]
+                        save_missed_streak(missed_streak)
+                    if mem.id in reaction_data:
+                        del reaction_data[mem.id]
+                except discord.Forbidden:
+                    await channel.send(f"Nem tudom levenni a rangot {mem.mention}-ről.")
+                except:
+                    pass
+            elif s == 5:
+                try:
+                    await mem.send("Figyelem! Ez már az 5. mulasztásod. Ha még egyszer nem reagálsz, el fogod veszíteni az SH rangot.")
+                except:
+                    pass
+                entries.append(f"{mem.mention} **({s}/5)**❗")
+            else:
+                entries.append(f"{mem.mention} ({s}/5)")
+
+        if entries:
+            summary += "\n**Nem reagált:** " + ", ".join(entries)
+        if lost_roles:
+            summary += "\nSH-rangot elvesztette: " + ", ".join(lost_roles)
+    else:
+        summary += "\nMindenki reagált! 👍"
+
+    valid_times = []
+    for emoji, time_str in REACTIONS.items():
+        if emoji != "❌" and counts.get(emoji, 0) >= REQUIRED_PLAYERS:
+            valid_times.append(time_str)
+
+    if valid_times:
+        time_str = valid_times[0].split('-')[0]
+        summary += "\n✅ **INDUL** az SH ma **" + time_str + "** órától! ✅\n"
+    else:
+        summary += "\n‼️ Figyelem! Az SH ma **ELAMRAD** ‼️\n"
+    
+    await channel.send(summary)
+
+@bot.command()
+async def evaluate(ctx):
+    """Manuális parancs a napi kiértékeléshez"""
+    await evaluate_daily()
+
+@tasks.loop(time=message_time["evaluate"])
+async def scheduled_evaluate():
+    await evaluate_daily()
+
+async def send_dm_reminder():
+    """DM emlékeztető küldése a nem reagált tagoknak"""
+    channel = bot.get_channel(schedule_channel_id)
+    guild = channel.guild
+    role = guild.get_role(role_id)
+
+    if not role:
+        print("Nincs SH szerep a szerveren!")
+        return
+
+    not_responded = []
+    for mem in role.members:
+        if mem.bot:
+            continue
+        if mem.id not in reaction_data:
+            not_responded.append(mem)
+
+    if not_responded:
+        count = 0
+        for mem in not_responded:
+            try:
+                await mem.send(
+                    "Még nem reagáltál a mai SH-felmérésre. "
+                    "Kérlek jelölj be egy időpontot vagy a ❌ reakciót, ha nem érsz rá!"
+                )
+                count += 1
+            except:
+                pass
+        print(f"Összesen {count} főnek küldtem DM-emlékeztetőt.")
+    else:
+        print("Minden SH-tag reagált, nincs kinek emlékeztetőt küldeni.")
+
+@bot.command()
+async def dm_reminder(ctx):
+    """Manuális parancs DM emlékeztető küldéséhez"""
+    await send_dm_reminder()
+
+@tasks.loop(time=message_time["reminder"])
+async def scheduled_reminder():
+    await send_dm_reminder()
+
+# on_ready eventben indítás:
+@bot.event
+async def on_ready():
+    print("Bot elindult!")
+    scheduled_send.start()
+    scheduled_evaluate.start()
+    scheduled_reminder.start()
+
+
+@bot.command()
+async def clear(ctx, amount: int):
+    if ctx.author.guild_permissions.manage_messages:  # Jogosultság ellenőrzése
+        deleted = await ctx.channel.purge(limit=amount)
+        await ctx.send(f"{len(deleted)} üzenet törölve!", delete_after=5)
+    else:
+        await ctx.send("Nincs jogosultságod az üzenetek törlésére!", delete_after=5)
+
 @bot.command()
 async def member(ctx):
     print("Checking members")
@@ -268,163 +445,6 @@ async def checkuserroles(ctx, user_id: int):
     
     print(f"Felhasználó: {member} | Rangjai: {role_names}")
     await ctx.send(f"{member.mention} rangjai: {', '.join(role_names)}")
-
-
-
-@bot.command()
-async def evaluate(ctx):
-    """
-    Kiértékelés + (nem reagált + mulasztásnövelés).
-    Ha valaki 5/5 lesz, kap figyelmeztetést DM-ben,
-    ha 6/6, elveszti a rangot.
-    """
-    # Először kinyerjük a guild-et (és a csatornát) a contextből, vagy a schedule_channel_id alapján
-    channel = bot.get_channel(schedule_channel_id)
-    guild = channel.guild
-
-    # Két segédtároló: egy számláló és egy userlista
-    counts = {}
-    emoji_users = defaultdict(list)
-
-    # Végigmegyünk a user -> emoji_halmaz szerkezeten
-    for user_id, emojis in reaction_data.items():
-        # Megpróbáljuk lekérni a guild-tag objektumot
-        member = await guild.fetch_member(user_id)
-        # Ha valamiért nincs a szerveren (pl. kilépett), akkor None lehet
-        if not member:
-            continue
-
-        # Minden egyes emojihoz incrementáljuk a számlálót és hozzácsapjuk a user mentiont
-        for e in emojis:
-            counts[e] = counts.get(e, 0) + 1
-            emoji_users[e].append(member.mention)
-
-    # Létrehozzuk az összefoglaló szöveget
-    summary = "A mai SH létszám:\n"
-    for emoji, time_str in REACTIONS.items():
-        c = counts.get(emoji, 0)
-        if c > 0:
-            # Ha van legalább 1 fő, soroljuk fel a user(ek)et
-            user_list = emoji_users[emoji]
-            user_str = ", ".join(user_list)
-            summary += f"{time_str}: {c} fő ({user_str})\n"
-        else:
-            summary += f"{time_str}: 0 fő\n"
-    
-    
-    # Megnézzük, kik EGYÁLTALÁN nem reagáltak
-    #for role_ in guild.roles:
-    #    print(f"Role found: {role_.name}")
-
-    role = guild.get_role(role_id)
-    for member in role.members:
-            print(f"Checking member: {member.name}")
-    
-    if role is None:
-        summary += "\nNem találom a SH-résztvevő rangot."
-    else:
-        not_responded = []
-        for member in role.members:
-            if member.bot:
-                continue
-            # Ha valaki NINCS a reaction_data kulcsai közt, akkor nem reagált semmit
-            if member.id not in reaction_data:
-                not_responded.append(member)
-        if not_responded:
-            
-            entries = []
-            lost_roles = []  # ÚJ lista az SH-rangot elvesztő felhasználók számára
-            
-            for mem in not_responded:
-                increment_missed(mem.id)
-                s = missed_streak[mem.id]
-                # Ha 6 vagy több a mulasztás, elveszti a rangot
-                if s >= 6:
-                    try:
-                        await mem.remove_roles(role)
-                        try:
-                            await mem.send("Elvesztetted az SH rangot, egymást követő 6 alkalommal mulasztottad el a reagálást.")
-                        except:
-                            pass
-                        lost_roles.append(mem.mention)
-                        # Töröljük a user adatait a missed_streak-ből és a reaction_data-ból
-                        if mem.id in missed_streak:
-                            del missed_streak[mem.id]
-                            save_missed_streak(missed_streak)
-                        if mem.id in reaction_data:
-                            del reaction_data[mem.id]
-                    except discord.Forbidden:
-                        await channel.send(f"Nem tudom levenni a rangot {mem.mention}-ről.")
-                elif s == 5:
-                    try:
-                        await mem.send(
-                            "Figyelem! Ez már az 5. mulasztásod. Ha még egyszer nem reagálsz, el fogod veszíteni az SH rangot."
-                        )
-                    except:
-                        pass
-                    entries.append(f"{mem.mention} **({s}/5)**❗")
-                
-                else:
-                    entries.append(f"{mem.mention} ({s}/5)")
-            if entries:
-                summary += "\n**Nem reagált:** " + ", ".join(entries)
-            # Az SH-rangot elvesztett felhasználók összegyűjtése
-            if lost_roles:
-                summary += "\nSH-rangot elvesztette: " + ", ".join(lost_roles)
-        else:
-            summary += "\nMindenki reagált! 👍"
-        summary += "\n"
-    
-    # Megállapítjuk, mely idősávok érik el a REQUIRED_PLAYERS limitet
-    valid_times = []
-    for emoji, time_str in REACTIONS.items():
-        if emoji != "❌" and counts.get(emoji, 0) >= REQUIRED_PLAYERS:
-            valid_times.append(time_str)
-    #valid_times = ["18-19", "19-20", "20-21", "21-22", "22-től"]
-    if valid_times:
-        time_str = valid_times[0].split('-')[0]
-        summary += "\n✅ **INDUL** az SH ma **" + time_str + "** órától! ✅\n"
-    else:
-        summary += "\n‼️ Figyelem! Az SH ma **ELAMRAD** ‼️\n"
-    
-    await ctx.send(summary)
-
-@bot.command()
-async def dm_reminder(ctx):
-    """
-    Minden @SH-tag, aki NEM reagált, kap egy DM-et.
-    """
-    channel = bot.get_channel(schedule_channel_id)
-    guild = channel.guild
-    role = guild.get_role(role_id)
-
-    if not role:
-        await ctx.send("Nincs SH szerep a szerveren!")
-        return
-
-    # Kikeressük a nem reagáltakat
-    not_responded = []
-    for mem in role.members:
-        if mem.bot:
-            continue
-        if mem.id not in reaction_data:
-            not_responded.append(mem)
-
-    if not_responded:
-        count = 0
-        for mem in not_responded:
-            try:
-                await mem.send(
-                    "Még nem reagáltál a mai SH-felmérésre. "
-                    "Kérlek jelölj be egy időpontot vagy a ❌ reakciót, ha nem érsz rá!"
-                )
-                count += 1
-            except:
-                pass
-        print(f"Összesen {count} főnek küldtem DM-emlékeztetőt.")
-    else:
-        print("Minden SH-tag reagált, nincs kinek emlékeztetőt küldeni.")
-
 
 # Indítsd a botot
 def main():
