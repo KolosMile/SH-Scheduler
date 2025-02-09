@@ -46,8 +46,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 reaction_data = defaultdict(set)  # user_id -> {emoji1, emoji2, ...}
 missed_streak = load_missed_streak() # user_id -> missed_count
 daily_message_id = None  # Az utolsó kiküldött napi üzenet azonosítója
-schedule_channel_id = 1337861261739823275  # A "SH schedule" csatorna ID-ja (tesztszerveren)
-role_id = 1337856047351595100
+schedule_channel_id = 1336779385017073806   #1337861261739823275 A "SH schedule" csatorna ID-ja (tesztszerveren)
+role_id = 1336764986344865895 # 1337856047351595100
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
 
 # Azok a reakciók, amelyek IDŐPONTOT jelölnek
@@ -133,25 +133,22 @@ async def on_raw_reaction_add(payload):
     user_id = payload.user_id
     emoji = str(payload.emoji.name)
 
+    channel = bot.get_channel(payload.channel_id)
+    message = await channel.fetch_message(payload.message_id)
+    user = await bot.fetch_user(user_id)
+
     # Ha a user már zárolva van, addig minden új reakciót törlünk
     if user_id in user_lock:
-        channel = bot.get_channel(payload.channel_id)
-        message = await channel.fetch_message(payload.message_id)
-        user = await bot.fetch_user(user_id)
         await message.remove_reaction(emoji, user)
         return
     
     # Ha a reakció nincs a listában, töröljük
     if emoji not in REACTIONS and emoji not in TIME_EMOJIS:
-        channel = bot.get_channel(payload.channel_id)
-        message = await channel.fetch_message(payload.message_id)
-        user = await bot.fetch_user(user_id)
-        await message.remove_reaction(emoji, user)
+        try:
+            await message.remove_reaction(emoji, user)
+        except Exception as e:
+            print(f"[ERROR] Failed to remove reaction {emoji} from user {user_id}: {e}")
         return
-
-    channel = bot.get_channel(payload.channel_id)
-    message = await channel.fetch_message(payload.message_id)
-    user = await bot.fetch_user(user_id)
 
     # Ha nincs még set, hozzunk létre
     if user_id not in reaction_data:
@@ -292,7 +289,7 @@ async def evaluate(ctx):
     # Végigmegyünk a user -> emoji_halmaz szerkezeten
     for user_id, emojis in reaction_data.items():
         # Megpróbáljuk lekérni a guild-tag objektumot
-        member = guild.get_member(user_id)
+        member = await guild.fetch_member(user_id)
         # Ha valamiért nincs a szerveren (pl. kilépett), akkor None lehet
         if not member:
             continue
@@ -303,7 +300,7 @@ async def evaluate(ctx):
             emoji_users[e].append(member.mention)
 
     # Létrehozzuk az összefoglaló szöveget
-    summary = "A mai SH időpontok:\n"
+    summary = "A mai SH létszám:\n"
     for emoji, time_str in REACTIONS.items():
         c = counts.get(emoji, 0)
         if c > 0:
@@ -324,7 +321,7 @@ async def evaluate(ctx):
             print(f"Checking member: {member.name}")
     
     if role is None:
-        summary += "\nNem találom a SH-résztvevő szerepet."
+        summary += "\nNem találom a SH-résztvevő rangot."
     else:
         not_responded = []
         for member in role.members:
@@ -346,7 +343,7 @@ async def evaluate(ctx):
                     try:
                         await mem.remove_roles(role)
                         try:
-                            await mem.send("Elvesztetted az SH rangot (6/6 mulasztás).")
+                            await mem.send("Elvesztetted az SH rangot, egymást követő 6 alkalommal mulasztottad el a reagálást.")
                         except:
                             pass
                         lost_roles.append(mem.mention)
@@ -361,7 +358,7 @@ async def evaluate(ctx):
                 elif s == 5:
                     try:
                         await mem.send(
-                            "Figyelem! Ez már az 5. mulasztásod. Ha még egyszer nem reagálsz, elveszíted az SH rangot."
+                            "Figyelem! Ez már az 5. mulasztásod. Ha még egyszer nem reagálsz, el fogod veszíteni az SH rangot."
                         )
                     except:
                         pass
@@ -388,7 +385,7 @@ async def evaluate(ctx):
         time_str = valid_times[0].split('-')[0]
         summary += "\n✅ **INDUL** az SH ma **" + time_str + "** órától! ✅\n"
     else:
-        summary += "\n‼️ Figyelem! Az SH a mai napon **ELAMRAD** ‼️\n"
+        summary += "\n‼️ Figyelem! Az SH ma **ELAMRAD** ‼️\n"
     
     await ctx.send(summary)
 
@@ -418,15 +415,15 @@ async def dm_reminder(ctx):
         for mem in not_responded:
             try:
                 await mem.send(
-                    "Szia! Még nem reagáltál a mai SH-felmérésre. "
+                    "Még nem reagáltál a mai SH-felmérésre. "
                     "Kérlek jelölj be egy időpontot vagy a ❌ reakciót, ha nem érsz rá!"
                 )
                 count += 1
             except:
                 pass
-        await ctx.send(f"Összesen {count} főnek küldtem DM-emlékeztetőt.")
+        print(f"Összesen {count} főnek küldtem DM-emlékeztetőt.")
     else:
-        await ctx.send("Minden SH-tag reagált, nincs kinek emlékeztetőt küldeni.")
+        print("Minden SH-tag reagált, nincs kinek emlékeztetőt küldeni.")
 
 
 # Indítsd a botot
