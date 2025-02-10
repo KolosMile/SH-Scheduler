@@ -62,7 +62,7 @@ role_ids = {
     "Test": 1336764986344865895
     }
 
-server = "Scheff"  # Teszt szerver
+server = "Teszt"  # Teszt szerver
 schedule_channel_id = channel_ids[server]   # Az ütemezett üzenetek csatornája
 role_id = role_ids[server]  # Az SH rang ID-je
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
