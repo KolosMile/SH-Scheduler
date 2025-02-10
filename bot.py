@@ -6,6 +6,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 import asyncio
 import json
+from asyncio import Lock
 
 load_dotenv()
 # Bot token beolvasása környezeti változóból (vagy beírhatod közvetlenül)
@@ -88,6 +89,7 @@ REACTIONS = {
 }
 REQUIRED_PLAYERS = 7  # minimum létszám
 
+reaction_lock = Lock()
 
 def increment_missed(user_id: int):
     """Megnöveli user mulasztási számlálóját, és azonnal menti."""
@@ -157,55 +159,42 @@ async def on_raw_reaction_add(payload):
     user_id = payload.user_id
     emoji = str(payload.emoji.name)
 
-    channel = bot.get_channel(payload.channel_id)
-    message = await channel.fetch_message(payload.message_id)
-    user = await bot.fetch_user(user_id)
+    async with reaction_lock:
 
-    # Ha a user már zárolva van, addig minden új reakciót törlünk
-    if user_id in user_lock:
-        await message.remove_reaction(emoji, user)
-        return
-    
-    # Ha a reakció nincs a listában, töröljük
-    if emoji not in REACTIONS and emoji not in TIME_EMOJIS:
-        try:
-            await message.remove_reaction(emoji, user)
-        except Exception as e:
-            print(f"[ERROR] Failed to remove reaction {emoji} from user {user_id}: {e}")
-        return
+        channel = bot.get_channel(payload.channel_id)   
+        message = await channel.fetch_message(payload.message_id)
+        user = await bot.fetch_user(user_id)
+        
+        # Ha a reakció nincs a listában, töröljük
+        if emoji not in REACTIONS and emoji not in TIME_EMOJIS:
+            try:
+                await message.remove_reaction(emoji, user)
+            except Exception as e:
+                print(f"[ERROR] Failed to remove reaction {emoji} from user {user_id}: {e}")
+            return
 
-    # Ha nincs még set, hozzunk létre
-    if user_id not in reaction_data:
-        reaction_data[user_id] = set()
-    user_reactions = reaction_data[user_id]
+        # Ha nincs még set, hozzunk létre
+        if user_id not in reaction_data:
+            reaction_data[user_id] = set()
+        user_reactions = reaction_data[user_id]
 
-    # Ha a user épp a ❌-et nyomta
-    if emoji == NOT_EMOJI:
-        # 1) Zároljuk a usert
-        user_lock.add(user_id)
-        try:
+        # Ha a user épp a ❌-et nyomta
+        if emoji == NOT_EMOJI:
             # Töröljük a usernél az összes time-reakciót
-            for e in list(user_reactions):
-                if e in TIME_EMOJIS:
-                    user_reactions.remove(e)
-                    await message.remove_reaction(e, user)
-            await asyncio.sleep(0.3)
             for e in list(user_reactions):
                 if e in TIME_EMOJIS:
                     user_reactions.remove(e)
                     await message.remove_reaction(e, user)
             user_reactions.add(NOT_EMOJI)
             print(f"[INFO] User {user_id} végleges reakcióhalmaz (❌ után): {user_reactions}")
-        finally:
-            user_lock.remove(user_id)
 
-    # Ha a user time-reakciót nyom
-    elif emoji in TIME_EMOJIS:
-        if NOT_EMOJI in user_reactions:
-            user_reactions.remove(NOT_EMOJI)
-            await message.remove_reaction(NOT_EMOJI, user)
-        user_reactions.add(emoji)
-        print(f"[INFO] User {user_id} végleges reakcióhalmaz (time hozzáadva): {user_reactions}")
+        # Ha a user time-reakciót nyom
+        elif emoji in TIME_EMOJIS:
+            if NOT_EMOJI in user_reactions:
+                user_reactions.remove(NOT_EMOJI)
+                await message.remove_reaction(NOT_EMOJI, user)
+            user_reactions.add(emoji)
+            print(f"[INFO] User {user_id} végleges reakcióhalmaz (time hozzáadva): {user_reactions}")
 
 
 @bot.event
@@ -221,15 +210,14 @@ async def on_raw_reaction_remove(payload):
     user_id = payload.user_id
     emoji = str(payload.emoji.name)
 
-    # Ha a reaction az általunk figyelt halmazban van:
-    if emoji in REACTIONS:
-        # Ha a user a reaction_data-ban létezik, és valóban az adott reakció van a halmazban, töröljük
-        if user_id in reaction_data and emoji in reaction_data[user_id]:
-            reaction_data[user_id].remove(emoji)
-            # Ha üres maradt a user set-je, törölhetjük a kulcsot
-            if not reaction_data[user_id]:
-                del reaction_data[user_id]
-            print(f"[REMOVE] User {user_id} eltávolította {emoji} reakciót. Jelenlegi set: {reaction_data.get(user_id, set())}")
+    async with reaction_lock:
+        # Ha a reaction az általunk figyelt halmazban van:
+        if emoji in REACTIONS:
+            if user_id in reaction_data and emoji in reaction_data[user_id]:    # ha mar a remove ciklusban toroljuk a reakciot, akkor nem kell ujra torolni
+                reaction_data[user_id].remove(emoji)
+                if not reaction_data[user_id]:
+                    del reaction_data[user_id]
+                print(f"[REMOVE] User {user_id} eltávolította {emoji} reakciót. Jelenlegi set: {reaction_data.get(user_id, set())}")
 
 
 async def evaluate_daily():
