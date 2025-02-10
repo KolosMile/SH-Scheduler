@@ -302,6 +302,10 @@ async def evaluate_daily():
             summary += "\n**Nem reagált:** " + ", ".join(entries)
         if lost_roles:
             summary += "\nSH-rangot elvesztette: " + ", ".join(lost_roles)
+
+    else:
+
+        summary += "\n**Mindenki reagált 🔥**"
     
     # Végül, ha volt változás, mentjük a fájlba
     if modified:
@@ -314,9 +318,9 @@ async def evaluate_daily():
 
     if valid_times:
         time_str = valid_times[0].split('-')[0]
-        summary += "\n✅ **INDUL** az SH ma **" + time_str + "** órától! ✅\n"
+        summary += "\n\n✅ **INDUL** az SH ma **" + time_str + "** órától! ✅"
     else:
-        summary += "\n‼️ Figyelem! Az SH ma **ELAMRAD** ‼️\n"
+        summary += "\n\n‼️ Figyelem! Az SH ma **ELAMRAD** ‼️"
     
     await channel.send(summary)
 
