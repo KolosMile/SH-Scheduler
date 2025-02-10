@@ -3,12 +3,15 @@ import discord
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta, time
 from collections import defaultdict
+from dotenv import load_dotenv
 import asyncio
 import json
 
-
+load_dotenv()
 # Bot token beolvasása környezeti változóból (vagy beírhatod közvetlenül)
-TOKEN = "MTMzNjc2OTc1NTQ2NTY0NjIwMw.GMwQ68.tgC4_WczjEfWiJr2ZRY9pugvK7IwpWV5AXUhX0"  # vagy: TOKEN = "IDE_ÍRD_A_TOKENED"
+TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+if TOKEN is None:
+    raise ValueError("The DISCORD_BOT_TOKEN environment variable is not set. Please set it and try again.")
 
 # Fájl, ahová mentjük a missed_streak-et
 STORAGE_FILE = "missed_streak.json"
@@ -58,7 +61,7 @@ role_ids = {
     "Test": 1336764986344865895
     }
 
-server = "Test"  # Teszt szerver
+server = "Scheff"  # Teszt szerver
 schedule_channel_id = channel_ids[server]   # Az ütemezett üzenetek csatornája
 role_id = role_ids[server]  # Az SH rang ID-je
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
@@ -186,43 +189,23 @@ async def on_raw_reaction_add(payload):
                 if e in TIME_EMOJIS:
                     user_reactions.remove(e)
                     await message.remove_reaction(e, user)
-            # (opcionálisan kis szünet)
             await asyncio.sleep(0.3)
-            # Utólagos ellenőrzés – ha valaki extragyorsan mégis time-ot nyomott
-            # a fentiek remove-jai közben:
             for e in list(user_reactions):
                 if e in TIME_EMOJIS:
                     user_reactions.remove(e)
                     await message.remove_reaction(e, user)
-
-            # 2) Végül hozzáadjuk a ❌-et
             user_reactions.add(NOT_EMOJI)
             print(f"[INFO] User {user_id} végleges reakcióhalmaz (❌ után): {user_reactions}")
-            # Ha bármelyik reakció is van, lenullázzuk a streaket
-            if missed_streak[user_id] > 0:
-                missed_streak[user_id] = 0
-                print(f"[INFO] {user_id} streak nullázva (x reagál).")
         finally:
-            # Oldjuk a lockot
             user_lock.remove(user_id)
 
     # Ha a user time-reakciót nyom
     elif emoji in TIME_EMOJIS:
-        # Ha benn van a ❌ a setjében, töröljük
         if NOT_EMOJI in user_reactions:
             user_reactions.remove(NOT_EMOJI)
             await message.remove_reaction(NOT_EMOJI, user)
-
-        # Hozzáadjuk az új time-reakciót
         user_reactions.add(emoji)
         print(f"[INFO] User {user_id} végleges reakcióhalmaz (time hozzáadva): {user_reactions}")
-
-        if user_id not in missed_streak:
-            missed_streak[user_id] = 0
-
-        if missed_streak[user_id] > 0:
-            missed_streak[user_id] = 0
-            print(f"[INFO] {user_id} streak nullázva (time reagál).")
 
 
 @bot.event
@@ -286,12 +269,25 @@ async def evaluate_daily():
         if not member.bot and member.id not in reaction_data:
             not_responded.append(member)
 
+    # Missed streak kezelése
+    modified = False  # Jelzi ha változott a missed_streak
+    
+    # 1. Töröljük azokat akik reagáltak
+    for user_id in list(missed_streak.keys()):
+        if user_id in reaction_data:
+            del missed_streak[user_id]
+            modified = True
+    
+    # 2. Kezeljük a nem reagálókat
     if not_responded:
         entries = []
         lost_roles = []
 
         for mem in not_responded:
-            increment_missed(mem.id)
+            if mem.id not in missed_streak:
+                missed_streak[mem.id] = 0
+            missed_streak[mem.id] += 1
+            modified = True
             s = missed_streak[mem.id]
             
             if s >= 6:
@@ -299,11 +295,8 @@ async def evaluate_daily():
                     await mem.remove_roles(role)
                     await mem.send("Elvesztetted az SH rangot, egymást követő 6 alkalommal mulasztottad el a reagálást.")
                     lost_roles.append(mem.mention)
-                    if mem.id in missed_streak:
-                        del missed_streak[mem.id]
-                        save_missed_streak(missed_streak)
-                    if mem.id in reaction_data:
-                        del reaction_data[mem.id]
+                    del missed_streak[mem.id]
+                    modified = True
                 except discord.Forbidden:
                     await channel.send(f"Nem tudom levenni a rangot {mem.mention}-ről.")
                 except:
@@ -321,8 +314,10 @@ async def evaluate_daily():
             summary += "\n**Nem reagált:** " + ", ".join(entries)
         if lost_roles:
             summary += "\nSH-rangot elvesztette: " + ", ".join(lost_roles)
-    else:
-        summary += "\nMindenki reagált! 👍"
+    
+    # Végül, ha volt változás, mentjük a fájlba
+    if modified:
+        save_missed_streak(missed_streak)
 
     valid_times = []
     for emoji, time_str in REACTIONS.items():
