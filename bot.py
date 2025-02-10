@@ -3,16 +3,17 @@ import discord
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta, time
 from collections import defaultdict
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 import asyncio
 import json
 from asyncio import Lock
 
-load_dotenv()
-# Bot token beolvasása környezeti változóból (vagy beírhatod közvetlenül)
+# A régi load_dotenv() hívás helyett:
+load_dotenv(dotenv_path=find_dotenv(), override=True)
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+print(f"Token betöltve a .env fájlból: {TOKEN[:10]}..." if TOKEN else "Token nem található!")
 if TOKEN is None:
-    raise ValueError("The DISCORD_BOT_TOKEN environment variable is not set. Please set it and try again.")
+    raise ValueError("A DISCORD_BOT_TOKEN nincs beállítva a .env fájlban!")
 
 # Fájl, ahová mentjük a missed_streak-et
 STORAGE_FILE = "missed_streak.json"
@@ -44,7 +45,15 @@ intents.reactions = True
 intents.guilds = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+class MyBot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reaction_lock = None
+
+    async def setup_hook(self):
+        self.reaction_lock = asyncio.Lock()
+
+bot = MyBot(command_prefix="!", intents=intents)
 
 # Itt tároljuk a fontos adatokat (például reakciók, ki reagált, stb.)
 # Később fájlba is mentheted (JSON), hogy ne vesszen el a leállítás után.
@@ -88,8 +97,6 @@ REACTIONS = {
     "❌": "Nem érek rá"
 }
 REQUIRED_PLAYERS = 7  # minimum létszám
-
-reaction_lock = Lock()
 
 def increment_missed(user_id: int):
     """Megnöveli user mulasztási számlálóját, és azonnal menti."""
@@ -159,7 +166,7 @@ async def on_raw_reaction_add(payload):
     user_id = payload.user_id
     emoji = str(payload.emoji.name)
 
-    async with reaction_lock:
+    async with bot.reaction_lock:
 
         channel = bot.get_channel(payload.channel_id)   
         message = await channel.fetch_message(payload.message_id)
@@ -210,7 +217,7 @@ async def on_raw_reaction_remove(payload):
     user_id = payload.user_id
     emoji = str(payload.emoji.name)
 
-    async with reaction_lock:
+    async with bot.reaction_lock:
         # Ha a reaction az általunk figyelt halmazban van:
         if emoji in REACTIONS:
             if user_id in reaction_data and emoji in reaction_data[user_id]:    # ha mar a remove ciklusban toroljuk a reakciot, akkor nem kell ujra torolni
