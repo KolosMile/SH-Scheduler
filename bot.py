@@ -68,9 +68,9 @@ role_id = role_ids[server]  # Az SH rang ID-je
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
 
 message_time = {
-    "send": time(hour=1, minute=28, second=0), 
-    "reminder": time(hour=1, minute=28, second=15),
-    "evaluate": time(hour=1, minute=28, second=30)
+    "send": time(hour=11, minute=0, second=0), 
+    "reminder": time(hour=15, minute=45, second=0),
+    "evaluate": time(hour=16, minute=45, second=0)
     }  # Az üzenet pontos időpontja
 
 # Azok a reakciók, amelyek IDŐPONTOT jelölnek
