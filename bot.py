@@ -62,7 +62,7 @@ missed_streak = load_missed_streak() # user_id -> missed_count
 daily_message_id = None  # Az utolsó kiküldött napi üzenet azonosítója
 
 channel_ids = {
-    "Scheff": 1337861261739823275, 
+    "Scheff": 1339145626948075530, 
     "Test": 1336779385017073806
     }
 
