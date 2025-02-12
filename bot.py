@@ -74,6 +74,7 @@ role_ids = {
 server = "Scheff"  # Teszt szerver
 schedule_channel_id = channel_ids[server]   # Az ütemezett üzenetek csatornája
 role_id = role_ids[server]  # Az SH rang ID-je
+role_id_clan = 1234
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
 
 message_time = {
@@ -444,8 +445,8 @@ async def checkuserroles(ctx, user_id: int):
 async def add_sh_role(ctx):
     """Parancs, amely az összes role_id2-vel rendelkező felhasználónak megadja a role_id1 rangot."""
     guild = ctx.guild
-    role1 = guild.get_role(role_ids["Scheff"])  # role_id1
-    role2 = guild.get_role(role_ids["Test"])    # role_id2
+    role1 = guild.get_role(role_id)  # role_id1
+    role2 = guild.get_role(role_id_clan)    # role_id2
     
     if not role1 or not role2:
         await ctx.send("Egy vagy több szerep nem található a szerveren!")
@@ -459,11 +460,11 @@ async def add_sh_role(ctx):
                 count += 1
                 print(f"SH rang hozzáadva: {member.name}")
             except discord.Forbidden:
-                await ctx.send(f"Nem tudom hozzáadni a rangot {member.mention}-nek.")
+                print("Nem tudom hozzáadni a rangot {member.mention}-nek.")
             except Exception as e:
                 print(f"Hiba történt {member.name} SH rangjának hozzáadásakor: {e}")
     
-    await ctx.send(f"Összesen {count} felhasználónak adtam meg az SH rangot.")
+    print(f"Összesen {count} felhasználónak adtam meg az SH rangot.")
 
 # Indítsd a botot
 def main():
