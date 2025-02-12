@@ -466,6 +466,126 @@ async def add_sh_role(ctx):
     
     print(f"Összesen {count} felhasználónak adtam meg az SH rangot.")
 
+@bot.command()
+async def rebuild_and_evaluate(ctx, message_id: int):
+    """Újraépíti a reaction_data-t egy adott üzenet ID alapján és kiértékeli"""
+    channel = bot.get_channel(schedule_channel_id)
+    message = await channel.fetch_message(message_id)
+    
+    # Reaction data újraépítése
+    global reaction_data
+    reaction_data.clear()
+    
+    for reaction in message.reactions:
+        emoji = str(reaction.emoji)
+        if emoji in REACTIONS:
+            async for user in reaction.users():
+                if not user.bot:
+                    if user.id not in reaction_data:
+                        reaction_data[user.id] = set()
+                    reaction_data[user.id].add(emoji)
+    
+    print("Reaction data újraépítve:")
+    for user_id, reactions in reaction_data.items():
+        print(f"User {user_id}: {reactions}")
+    
+    # Missed streak tisztítása
+    cleaned = 0
+    for user_id in list(missed_streak.keys()):
+        if user_id in reaction_data:
+            del missed_streak[user_id]
+            cleaned += 1
+
+    save_missed_streak(missed_streak)
+    
+    print(f"\nMissed streak tisztítva ({cleaned} felhasználó törölve)")
+    
+    # Kiértékelés részekre bontva
+    guild = channel.guild
+    counts = {}
+    emoji_users = defaultdict(list)
+    
+    for user_id, emojis in reaction_data.items():
+        member = await guild.fetch_member(user_id)
+        if not member:
+            continue
+        
+        for e in emojis:
+            counts[e] = counts.get(e, 0) + 1
+            emoji_users[e].append(member.mention)
+    
+    # Üzenet részekre bontása
+    messages = []
+    current_msg = "A mai SH létszám:\n"
+    
+    # Időpontok és létszámok
+    for emoji, time_str in REACTIONS.items():
+        c = counts.get(emoji, 0)
+        line = ""
+        if c > 0:
+            user_list = emoji_users[emoji]
+            user_str = ", ".join(user_list)
+            line = f"{time_str}: {c} fő ({user_str})\n"
+        else:
+            line = f"{time_str}: 0 fő\n"
+            
+        # Ha az új sor hozzáadásával túllépnénk a limitet
+        if len(current_msg + line) > 1900:
+            messages.append(current_msg)
+            current_msg = line
+        else:
+            current_msg += line
+    
+    # Nem reagálók listája
+    role = guild.get_role(role_id)
+    not_responded = []
+    for member in role.members:
+        if not member.bot and member.id not in reaction_data:
+            not_responded.append(member)
+    
+    if not_responded:
+        not_resp_msg = "\n**Nem reagált:**\n"
+        for mem in not_responded:
+            line = f"{mem.mention} ({missed_streak.get(mem.id, 0)}/5)\n"
+            if len(current_msg + not_resp_msg + line) > 1900:
+                messages.append(current_msg)
+                current_msg = not_resp_msg + line
+                not_resp_msg = ""
+            else:
+                not_resp_msg += line
+        current_msg += not_resp_msg
+    else:
+        current_msg += "\n**Mindenki reagált 🔥**"
+    
+    # Végső összesítés
+    valid_times = []
+    for emoji, time_str in REACTIONS.items():
+        if emoji != "❌" and counts.get(emoji, 0) >= REQUIRED_PLAYERS:
+            valid_times.append(time_str)
+    
+    summary = "\n\n"
+    if valid_times:
+        time_str = valid_times[0].split('-')[0]
+        summary += f"✅ **INDUL** az SH ma **{time_str}** órától! ✅"
+    else:
+        summary += "‼️ Figyelem! Az SH ma **ELMARAD** ‼️"
+    
+    if len(current_msg + summary) > 1900:
+        messages.append(current_msg)
+        current_msg = summary
+    else:
+        current_msg += summary
+    
+    messages.append(current_msg)
+    
+    # Üzenetek kiírása print-tel
+    print("\nKimeneti üzenetek:")
+    for i, msg in enumerate(messages, 1):
+        #print(f"\n--- Üzenet {i}/{len(messages)} ---")
+        print(msg)
+        #print(f"Karakterek száma: {len(msg)}")
+
+
 # Indítsd a botot
 def main():
     bot.run(TOKEN)
