@@ -24,4 +24,4 @@ __pycache__/
 .DS_Store
 
 #Egyéb
-missed_streak.json
+server_data/

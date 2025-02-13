@@ -8,6 +8,8 @@ import asyncio
 import json
 from asyncio import Lock
 
+server = "Scheff"  # Teszt szerver
+
 # A régi load_dotenv() hívás helyett:
 load_dotenv(dotenv_path=find_dotenv(), override=True)
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
@@ -16,13 +18,18 @@ if TOKEN is None:
     raise ValueError("A DISCORD_BOT_TOKEN nincs beállítva a .env fájlban!")
 
 # Fájl, ahová mentjük a missed_streak-et
-STORAGE_FILE = "missed_streak.json"
+STORAGE_FILES = {
+    "Scheff": "server_data/missed_streak.json",
+    "Test": "server_data/missed_streak_test.json"
+}
+STORAGE_FILE = STORAGE_FILES[server]
 
 def load_missed_streak():
-    """Beolvassa a mulasztási adatokat a STORAGE_FILE-ból."""
-    if not os.path.exists(STORAGE_FILE):
+    """Beolvassa a mulasztási adatokat a megfelelő STORAGE_FILE-ból."""
+    storage_file = STORAGE_FILES[server]
+    if not os.path.exists(storage_file):
         return {}
-    with open(STORAGE_FILE, "r", encoding="utf-8") as f:
+    with open(storage_file, "r", encoding="utf-8") as f:
         try:
             data = json.load(f)
             # JSON-ban string key-k lesznek, intté konvertáljuk
@@ -34,8 +41,9 @@ def load_missed_streak():
             return {}
         
 def save_missed_streak(missed_data):
-    """Elmenti a mulasztási adatokat a STORAGE_FILE-ba JSON-ben."""
-    with open(STORAGE_FILE, "w", encoding="utf-8") as f:
+    """Elmenti a mulasztási adatokat a megfelelő STORAGE_FILE-ba JSON-ben."""
+    storage_file = STORAGE_FILES[server]
+    with open(storage_file, "w", encoding="utf-8") as f:
         json.dump(missed_data, f, ensure_ascii=False, indent=2)
 
 intents = discord.Intents.default()
@@ -71,7 +79,6 @@ role_ids = {
     "Test": 1336764986344865895
     }
 
-server = "Scheff"  # Teszt szerver
 schedule_channel_id = channel_ids[server]   # Az ütemezett üzenetek csatornája
 role_id = role_ids[server]  # Az SH rang ID-je
 role_id_clan = 830498818113798215
@@ -232,33 +239,13 @@ async def evaluate_daily():
     """Napi SH kiértékelése"""
     channel = bot.get_channel(schedule_channel_id)
     guild = channel.guild
+    messages = []  # Itt gyűjtjük az üzeneteket
 
-    counts = {}
-    emoji_users = defaultdict(list)
-
-    for user_id, emojis in reaction_data.items():
-        member = await guild.fetch_member(user_id)
-        if not member:
-            continue
-
-        for e in emojis:
-            counts[e] = counts.get(e, 0) + 1
-            emoji_users[e].append(member.mention)
-
-    summary = "A mai SH létszám:\n"
-    for emoji, time_str in REACTIONS.items():
-        c = counts.get(emoji, 0)
-        if c > 0:
-            user_list = emoji_users[emoji]
-            user_str = ", ".join(user_list)
-            summary += f"{time_str}: {c} fő ({user_str})\n"
-        else:
-            summary += f"{time_str}: 0 fő\n"
-    
+    # Nem reagálók kezelése
     role = guild.get_role(role_id)
     if role is None:
-        summary += "\nNem találom a SH-résztvevő rangot."
-        return await channel.send(summary)
+        messages.append("\nNem találom a SH-résztvevő rangot.")
+        return await send_messages(channel, messages)
 
     not_responded = []
     for member in role.members:
@@ -266,17 +253,15 @@ async def evaluate_daily():
             not_responded.append(member)
 
     # Missed streak kezelése
-    modified = False  # Jelzi ha változott a missed_streak
-    
-    # 1. Töröljük azokat akik reagáltak
+    modified = False
     for user_id in list(missed_streak.keys()):
         if user_id in reaction_data:
             del missed_streak[user_id]
             modified = True
-    
-    # 2. Kezeljük a nem reagálókat
+
     if not_responded:
-        entries = []
+        current_msg = "\u200b\n**Nem reagált:**\n"
+        names = ""
         lost_roles = []
 
         for mem in not_responded:
@@ -293,32 +278,83 @@ async def evaluate_daily():
                     lost_roles.append(mem.mention)
                     del missed_streak[mem.id]
                     modified = True
-                except discord.Forbidden:
-                    await channel.send(f"Nem tudom levenni a rangot {mem.mention}-ről.")
                 except:
                     pass
-            elif s == 5:
-                try:
-                    await mem.send("Figyelem! Ez már az 5. mulasztásod. Ha még egyszer nem reagálsz, el fogod veszíteni az SH rangot.")
-                except:
-                    pass
-                entries.append(f"{mem.mention} **({s}/5)**❗")
             else:
-                entries.append(f"{mem.mention} ({s}/5)")
-
-        if entries:
-            summary += "\n**Nem reagált:** " + ", ".join(entries)
+                user_str = f"{mem.mention} ({s}/5)"
+                if s == 5:
+                    user_str = f"{mem.mention} **({s}/5)**❗"
+                    try:
+                        await mem.send("Figyelem! Ez már az 5. mulasztásod. Ha még egyszer nem reagálsz, el fogod veszíteni az SH rangot.")
+                    except:
+                        pass
+                
+                if len(names + user_str + ", ") > 1900:
+                    messages.append(current_msg + names.rstrip(", "))
+                    names = user_str + ", "
+                else:
+                    names += user_str + ", "
+        
+        if names:
+            messages.append(current_msg + names.rstrip(", "))
+        
         if lost_roles:
-            summary += "\nSH-rangot elvesztette: " + ", ".join(lost_roles)
-
+            current_msg = "\u200b\n**SH-rangot elvesztette:**\n"
+            names = ""
+            for user in lost_roles:
+                if len(names + user + ", ") > 1900:
+                    messages.append(current_msg + names.rstrip(", "))
+                    names = user + ", "
+                else:
+                    names += user + ", "
+            if names:
+                messages.append(current_msg + names.rstrip(", "))
     else:
+        messages.append("\u200b\n**Mindenki reagált 🔥**")
 
-        summary += "\n**Mindenki reagált 🔥**"
-    
-    # Végül, ha volt változás, mentjük a fájlba
     if modified:
         save_missed_streak(missed_streak)
 
+    counts = {}
+    emoji_users = defaultdict(list)
+
+    for user_id, emojis in reaction_data.items():
+        member = await guild.fetch_member(user_id)
+        if not member:
+            continue
+        for e in emojis:
+            counts[e] = counts.get(e, 0) + 1
+            emoji_users[e].append(member.mention)
+
+    # Első üzenet: Fejléc
+    messages.append("\u200b\n**A mai SH létszám:**\n")
+
+    # Az evaluate_daily függvényben:
+    for emoji, time_str in REACTIONS.items():
+        c = counts.get(emoji, 0)
+        if c > 0:
+            current_msg = f"\n**{time_str} ───────────**\n"  # Vizuális elválasztó
+            current_msg += f"Létszám: **{c}** fő\n"         # Külön sorban a létszám
+            current_msg += f"Jelentkezők:\n"            # Külön sorban a nevek
+            user_list = emoji_users[emoji]
+            names = ""
+            
+            # Nevek feldolgozása az időponthoz
+            for user in user_list:
+                if len(names + user + "\n") > 1900:  # Minden név új sorba
+                    messages.append(current_msg + names)
+                    names = user + "\n"
+                    current_msg = f"{time_str} (folytatás):\n"
+                else:
+                    names += user + "\n"
+            
+            if names:
+                messages.append(current_msg + names)
+        else:
+            messages.append(f"\n{time_str} **(-)**\n")
+
+
+    # Végső összesítés
     valid_times = []
     for emoji, time_str in REACTIONS.items():
         if emoji != "❌" and counts.get(emoji, 0) >= REQUIRED_PLAYERS:
@@ -326,11 +362,12 @@ async def evaluate_daily():
 
     if valid_times:
         time_str = valid_times[0].split('-')[0]
-        summary += "\n\n✅ **INDUL** az SH ma **" + time_str + "** órától! ✅"
+        messages.append(f" \n✅ **INDUL** az SH ma **{time_str}** órától! ✅")
     else:
-        summary += "\n\n‼️ Figyelem! Az SH ma **ELAMRAD** ‼️"
-    
-    await channel.send(summary)
+        messages.append("\u200b\n‼️ Figyelem! Az SH ma **ELMARAD** ‼️")
+
+    # Üzenetek kiküldése
+    await send_messages(channel, messages)
 
 async def send_messages(channel, messages):
     """Üzenetek kiküldése egymás után"""
@@ -391,19 +428,19 @@ async def scheduled_reminder():
 async def check_and_rebuild():
     """Ellenőrzi az utolsó üzenetet és szükség esetén újraépíti a reaction_data-t"""
     channel = bot.get_channel(schedule_channel_id)
+
     if not channel:
         return
     
     try:
         # Utolsó 10 üzenet lekérése
-        messages = [msg async for msg in channel.history(limit=10)]
-        
+        messages = [msg async for msg in channel.history(limit=20)]
         # Keressük meg az utolsó bot által küldött üzenetet
         for message in messages:
             if message.author == bot.user and any(emoji in message.content for emoji in REACTIONS.keys()):
                 # Ellenőrizzük, hogy volt-e már kiértékelés
-                async for msg in channel.history(limit=10, after=message):
-                    if msg.author == bot.user and "A mai SH létszám:" in msg.content:
+                async for msg in channel.history(limit=20, after=message):
+                    if msg.author == bot.user and ("**INDUL**" in msg.content or "**ELMARAD**" in msg.content):
                         print("Az utolsó üzenet már ki volt értékelve.")
                         return
                 
