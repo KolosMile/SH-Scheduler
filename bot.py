@@ -332,6 +332,12 @@ async def evaluate_daily():
     
     await channel.send(summary)
 
+async def send_messages(channel, messages):
+    """Üzenetek kiküldése egymás után"""
+    for msg in messages:
+        if msg.strip():  # Csak akkor küldjük, ha nem üres
+            await channel.send(msg)
+
 @bot.command()
 async def evaluate(ctx):
     """Manuális parancs a napi kiértékeléshez"""
@@ -382,14 +388,77 @@ async def dm_reminder(ctx):
 async def scheduled_reminder():
     await send_dm_reminder()
 
-# on_ready eventben indítás:
+async def check_and_rebuild():
+    """Ellenőrzi az utolsó üzenetet és szükség esetén újraépíti a reaction_data-t"""
+    channel = bot.get_channel(schedule_channel_id)
+    if not channel:
+        return
+    
+    try:
+        # Utolsó 10 üzenet lekérése
+        messages = [msg async for msg in channel.history(limit=10)]
+        
+        # Keressük meg az utolsó bot által küldött üzenetet
+        for message in messages:
+            if message.author == bot.user and any(emoji in message.content for emoji in REACTIONS.keys()):
+                # Ellenőrizzük, hogy volt-e már kiértékelés
+                async for msg in channel.history(limit=10, after=message):
+                    if msg.author == bot.user and "A mai SH létszám:" in msg.content:
+                        print("Az utolsó üzenet már ki volt értékelve.")
+                        return
+                
+                print(f"Találtam egy ki nem értékelt üzenetet (ID: {message.id})")
+                # Ha nincs kiértékelés, újraépítjük a reaction_data-t
+                global daily_message_id
+                daily_message_id = message.id
+                await rebuild_reactions_data(message.id)
+                return
+                
+    except Exception as e:
+        print(f"Hiba történt az utolsó üzenet ellenőrzésekor: {e}")
+
 @bot.event
 async def on_ready():
     print("Bot elindult!")
+    await check_and_rebuild()
     scheduled_send.start()
     scheduled_evaluate.start()
     scheduled_reminder.start()
 
+async def rebuild_reactions_data(message_id: int):
+    """Újraépíti a reaction_data-t egy adott üzenet ID alapján"""
+    channel = bot.get_channel(schedule_channel_id)
+    message = await channel.fetch_message(message_id)
+    
+    # Reaction data újraépítése
+    global reaction_data, daily_message_id
+    reaction_data.clear()
+    daily_message_id = message_id
+    
+    for reaction in message.reactions:
+        emoji = str(reaction.emoji)
+        if emoji in REACTIONS:
+            async for user in reaction.users():
+                if not user.bot:
+                    if user.id not in reaction_data:
+                        reaction_data[user.id] = set()
+                    reaction_data[user.id].add(emoji)
+    
+    # Missed streak tisztítása
+    cleaned = 0
+    for user_id in list(missed_streak.keys()):
+        if user_id in reaction_data:
+            del missed_streak[user_id]
+            cleaned += 1
+
+    save_missed_streak(missed_streak)
+    
+    print(f"Reaction data újraépítve:")
+    for user_id, reactions in reaction_data.items():
+        print(f"User {user_id}: {reactions}")
+    print(f"Missed streak tisztítva ({cleaned} felhasználó törölve)")
+
+    return reaction_data
 
 @bot.command()
 async def clear(ctx, amount: int):
