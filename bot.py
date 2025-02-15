@@ -134,8 +134,8 @@ async def send_daily_message():
     role = guild.get_role(role_id)
     role_mention = role.mention if role else "@SH"
     text = (
-        f"{role_mention} Ma ( {datetime.now().strftime('%Y-%m-%d')} ) "
-        "mikor értek rá SH-ra? Reakciókkal jelöljétek!\n\n"
+        f"{role_mention} **Ma ( {datetime.now().strftime('%Y-%m-%d')} ) "
+        "mikor értek rá SH-ra? Reakciókkal jelöljétek!**\n\n"
         "1️⃣ - 18-19\n"
         "2️⃣ - 19-20\n"
         "3️⃣ - 20-21\n"
@@ -180,13 +180,16 @@ async def on_raw_reaction_add(payload):
         channel = bot.get_channel(payload.channel_id)   
         message = await channel.fetch_message(payload.message_id)
         user = await bot.fetch_user(user_id)
+        guild = channel.guild
+        member = guild.get_member(user_id)
+        username = member.display_name if member else f"User_{user_id}"
         
         # Ha a reakció nincs a listában, töröljük
         if emoji not in REACTIONS and emoji not in TIME_EMOJIS:
             try:
                 await message.remove_reaction(emoji, user)
             except Exception as e:
-                print(f"[ERROR] Failed to remove reaction {emoji} from user {user_id}: {e}")
+                print(f"[ERROR] Failed to remove reaction {emoji} from user {username}: {e}")
             return
 
         # Ha nincs még set, hozzunk létre
@@ -202,7 +205,7 @@ async def on_raw_reaction_add(payload):
                     user_reactions.remove(e)
                     await message.remove_reaction(e, user)
             user_reactions.add(NOT_EMOJI)
-            print(f"[INFO] User {user_id} végleges reakcióhalmaz (❌ után): {user_reactions}")
+            print(f"[ADD] {username} hozzáadta: ❌ . Set: {user_reactions}")
 
         # Ha a user time-reakciót nyom
         elif emoji in TIME_EMOJIS:
@@ -210,7 +213,7 @@ async def on_raw_reaction_add(payload):
                 user_reactions.remove(NOT_EMOJI)
                 await message.remove_reaction(NOT_EMOJI, user)
             user_reactions.add(emoji)
-            print(f"[INFO] User {user_id} végleges reakcióhalmaz (time hozzáadva): {user_reactions}")
+            print(f"[ADD] {username} hozzáadta: {emoji} . Set: {user_reactions}")
 
 
 @bot.event
@@ -227,13 +230,18 @@ async def on_raw_reaction_remove(payload):
     emoji = str(payload.emoji.name)
 
     async with bot.reaction_lock:
+        channel = bot.get_channel(payload.channel_id)
+        guild = channel.guild
+        member = guild.get_member(user_id)
+        username = member.display_name if member else f"User_{user_id}"
+        
         # Ha a reaction az általunk figyelt halmazban van:
         if emoji in REACTIONS:
             if user_id in reaction_data and emoji in reaction_data[user_id]:    # ha mar a remove ciklusban toroljuk a reakciot, akkor nem kell ujra torolni
                 reaction_data[user_id].remove(emoji)
                 if not reaction_data[user_id]:
                     del reaction_data[user_id]
-                print(f"[REMOVE] User {user_id} eltávolította {emoji} reakciót. Jelenlegi set: {reaction_data.get(user_id, set())}")
+                print(f"[REMOVE] {username} eltávolította: {emoji} . Set: {reaction_data.get(user_id, set())}")
 
 
 async def evaluate_daily():
@@ -366,7 +374,7 @@ async def evaluate_daily():
         time_str = valid_times[0].split('-')[0]
         messages.append(f"\u200b\n# ✅ **INDUL** az SH ma **{time_str}** órától! ✅")
     else:
-        messages.append("\u200b\n# ‼️ Figyelem! Az SH ma **ELMARAD** ‼️")
+        messages.append("\u200b\n# ‼️ Az SH ma **ELMARAD** ‼️")
 
     # Üzenetek kiküldése
     await send_messages(channel, messages)
@@ -468,6 +476,7 @@ async def rebuild_reactions_data(message_id: int):
     """Újraépíti a reaction_data-t egy adott üzenet ID alapján"""
     channel = bot.get_channel(schedule_channel_id)
     message = await channel.fetch_message(message_id)
+    guild = channel.guild
     
     # Reaction data újraépítése
     global reaction_data, daily_message_id
@@ -483,19 +492,12 @@ async def rebuild_reactions_data(message_id: int):
                         reaction_data[user.id] = set()
                     reaction_data[user.id].add(emoji)
     
-    # Missed streak tisztítása
-    cleaned = 0
-    for user_id in list(missed_streak.keys()):
-        if user_id in reaction_data:
-            del missed_streak[user_id]
-            cleaned += 1
 
-    save_missed_streak(missed_streak)
-    
     print(f"Reaction data újraépítve:")
     for user_id, reactions in reaction_data.items():
-        print(f"User {user_id}: {reactions}")
-    print(f"Missed streak tisztítva ({cleaned} felhasználó törölve)")
+        member = guild.get_member(user_id)
+        username = member.display_name if member else f"User_{user_id}"
+        print(f"{username}: {reactions}")
 
     return reaction_data
 
