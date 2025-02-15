@@ -261,7 +261,7 @@ async def evaluate_daily():
             modified = True
 
     if not_responded:
-        current_msg = f"\u200b\n**Nem reagált ({len(not_responded)}/{len(role.members)}) SH-tag:**\n"
+        current_msg = f"\u200b\n## **Nem reagált ({len(not_responded)}/{len(role.members)}) SH-tag:**\n"
         current_msg += f"\n"
         names = ""
         lost_roles = []
@@ -312,7 +312,7 @@ async def evaluate_daily():
             if names:
                 messages.append(current_msg + names.rstrip(", "))
     else:
-        messages.append(f"\u200b\n**Mind a {len(role.members)} tankos reagált 🔥**")
+        messages.append(f"\u200b\n**Mind a(z) {len(role.members)} tankos reagált 🔥**")
 
     if modified:
         save_missed_streak(missed_streak)
@@ -329,13 +329,13 @@ async def evaluate_daily():
             emoji_users[e].append(member.mention)
 
     # Első üzenet: Fejléc
-    messages.append("\u200b\n**A mai SH létszám:**\n")
+    messages.append("\u200b\n## **A mai SH létszám:**\n")
 
     # Az evaluate_daily függvényben:
     for emoji, time_str in REACTIONS.items():
         c = counts.get(emoji, 0)
         if c > 0:
-            current_msg = f"\u200b\n**{time_str} ───────────**\n"  # Vizuális elválasztó
+            current_msg = f"\u200b\n## **{time_str} ───────────**\n"  # Vizuális elválasztó
             current_msg += f"Létszám: **{c}** fő\n"         # Külön sorban a létszám
             current_msg += f"Jelentkezők:\n"            # Külön sorban a nevek
             user_list = emoji_users[emoji]
@@ -364,9 +364,9 @@ async def evaluate_daily():
 
     if valid_times:
         time_str = valid_times[0].split('-')[0]
-        messages.append(f"\u200b\n✅ **INDUL** az SH ma **{time_str}** órától! ✅")
+        messages.append(f"\u200b\n# ✅ **INDUL** az SH ma **{time_str}** órától! ✅")
     else:
-        messages.append("\u200b\n‼️ Figyelem! Az SH ma **ELMARAD** ‼️")
+        messages.append("\u200b\n# ‼️ Figyelem! Az SH ma **ELMARAD** ‼️")
 
     # Üzenetek kiküldése
     await send_messages(channel, messages)
@@ -458,7 +458,7 @@ async def check_and_rebuild():
 
 @bot.event
 async def on_ready():
-    print("Bot elindult!")
+    print(f"bot elindult a(z) {SERVER}-szerveren!")
     await check_and_rebuild()
     scheduled_send.start()
     scheduled_evaluate.start()
