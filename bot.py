@@ -8,7 +8,6 @@ import asyncio
 import json
 from asyncio import Lock
 
-server = "Scheff"  # Teszt szerver
 
 # A régi load_dotenv() hívás helyett:
 load_dotenv(dotenv_path=find_dotenv(), override=True)
@@ -16,17 +15,19 @@ TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 print(f"Token betöltve a .env fájlból: {TOKEN[:10]}..." if TOKEN else "Token nem található!")
 if TOKEN is None:
     raise ValueError("A DISCORD_BOT_TOKEN nincs beállítva a .env fájlban!")
-
+SERVER = os.getenv('SERVER_NAME')
+if SERVER is None:
+    raise ValueError("A SERVER nincs beállítva a .env fájlban!")
 # Fájl, ahová mentjük a missed_streak-et
 STORAGE_FILES = {
     "Scheff": "server_data/missed_streak.json",
     "Test": "server_data/missed_streak_test.json"
 }
-STORAGE_FILE = STORAGE_FILES[server]
+STORAGE_FILE = STORAGE_FILES[SERVER]
 
 def load_missed_streak():
     """Beolvassa a mulasztási adatokat a megfelelő STORAGE_FILE-ból."""
-    storage_file = STORAGE_FILES[server]
+    storage_file = STORAGE_FILES[SERVER]
     if not os.path.exists(storage_file):
         return {}
     with open(storage_file, "r", encoding="utf-8") as f:
@@ -42,7 +43,7 @@ def load_missed_streak():
         
 def save_missed_streak(missed_data):
     """Elmenti a mulasztási adatokat a megfelelő STORAGE_FILE-ba JSON-ben."""
-    storage_file = STORAGE_FILES[server]
+    storage_file = STORAGE_FILES[SERVER]
     with open(storage_file, "w", encoding="utf-8") as f:
         json.dump(missed_data, f, ensure_ascii=False, indent=2)
 
@@ -79,8 +80,8 @@ role_ids = {
     "Test": 1336764986344865895
     }
 
-schedule_channel_id = channel_ids[server]   # Az ütemezett üzenetek csatornája
-role_id = role_ids[server]  # Az SH rang ID-je
+schedule_channel_id = channel_ids[SERVER]   # Az ütemezett üzenetek csatornája
+role_id = role_ids[SERVER]  # Az SH rang ID-je
 role_id_clan = 830498818113798215
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
 
@@ -260,12 +261,13 @@ async def evaluate_daily():
             modified = True
 
     if not_responded:
-        current_msg = "\u200b\n**Nem reagált:**\n"
+        current_msg = f"\u200b\n**Nem reagált ({len(not_responded)}/{len(role.members)}) SH-tag:**\n"
+        current_msg += f"\n"
         names = ""
         lost_roles = []
 
         for mem in not_responded:
-            if mem.id not in missed_streak:
+            if mem.id not in missed_streak: 
                 missed_streak[mem.id] = 0
             missed_streak[mem.id] += 1
             modified = True
@@ -310,7 +312,7 @@ async def evaluate_daily():
             if names:
                 messages.append(current_msg + names.rstrip(", "))
     else:
-        messages.append("\u200b\n**Mindenki reagált 🔥**")
+        messages.append(f"\u200b\n**Mind a {len(role.members)} tankos reagált 🔥**")
 
     if modified:
         save_missed_streak(missed_streak)
@@ -333,7 +335,7 @@ async def evaluate_daily():
     for emoji, time_str in REACTIONS.items():
         c = counts.get(emoji, 0)
         if c > 0:
-            current_msg = f"\n**{time_str} ───────────**\n"  # Vizuális elválasztó
+            current_msg = f"\u200b\n**{time_str} ───────────**\n"  # Vizuális elválasztó
             current_msg += f"Létszám: **{c}** fő\n"         # Külön sorban a létszám
             current_msg += f"Jelentkezők:\n"            # Külön sorban a nevek
             user_list = emoji_users[emoji]
@@ -362,7 +364,7 @@ async def evaluate_daily():
 
     if valid_times:
         time_str = valid_times[0].split('-')[0]
-        messages.append(f" \n✅ **INDUL** az SH ma **{time_str}** órától! ✅")
+        messages.append(f"\u200b\n✅ **INDUL** az SH ma **{time_str}** órától! ✅")
     else:
         messages.append("\u200b\n‼️ Figyelem! Az SH ma **ELMARAD** ‼️")
 
