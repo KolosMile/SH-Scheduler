@@ -86,7 +86,7 @@ role_id_clan = 830498818113798215
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
 
 message_time = {
-    "send": time(hour=11, minute=0, second=0), 
+    "send": time(hour=5, minute=0, second=0), 
     "reminder": time(hour=15, minute=45, second=0),
     "evaluate": time(hour=16, minute=45, second=0)
     }  # Az üzenet pontos időpontja
