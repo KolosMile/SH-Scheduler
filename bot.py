@@ -510,6 +510,27 @@ async def clear(ctx, amount: int):
         await ctx.send("Nincs jogosultságod az üzenetek törlésére!", delete_after=5)
 
 @bot.command()
+async def delete_message(ctx, message_id: int):
+    """Töröl egy üzenetet az ID alapján (csak ha a bot küldte)"""
+    try:
+        channel = bot.get_channel(schedule_channel_id)
+        message = await channel.fetch_message(message_id)
+        
+        # Ellenőrizzük, hogy a bot küldte-e az üzenetet
+        if message.author == bot.user:
+            await message.delete()
+            await ctx.send(f"Üzenet törölve (ID: {message_id})", delete_after=5)
+        else:
+            await ctx.send("Ezt az üzenetet nem törölhetem, mert nem én küldtem.", delete_after=5)
+            
+    except discord.NotFound:
+        await ctx.send("Nem található ilyen ID-jű üzenet.", delete_after=5)
+    except discord.Forbidden:
+        await ctx.send("Nincs jogosultságom törölni ezt az üzenetet.", delete_after=5)
+    except Exception as e:
+        await ctx.send(f"Hiba történt az üzenet törlésekor: {e}", delete_after=5)
+
+@bot.command()
 async def member(ctx):
     print("Checking members")
     # Először kinyerjük a guild-et (és a csatornát) a contextből, vagy a schedule_channel_id alapján
