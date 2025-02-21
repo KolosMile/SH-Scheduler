@@ -602,11 +602,12 @@ async def add_sh_role(ctx, user_id: int):
     """Egy adott felhasználónak adja az SH rangot"""
     try:
         # Guild és szerepek lekérése
-        guild = ctx.guild
+        channel = bot.get_channel(schedule_channel_id)
+        guild = channel.guild
         role = guild.get_role(role_id)
         
         if not role:
-            await ctx.send("Nem található az SH rang a szerveren!")
+            await ctx.send(f"Nem található az SH rang a {SERVER} szerveren!")
             return
             
         # Felhasználó keresése
@@ -622,7 +623,7 @@ async def add_sh_role(ctx, user_id: int):
             
         # Rang hozzáadása
         await member.add_roles(role)
-        await ctx.send(f"SH rang sikeresen hozzáadva: {member.mention}", delete_after=5)
+        await channel.send(f"SH rang sikeresen hozzáadva: {member.mention}", delete_after=5)
         print(f"SH rang hozzáadva: {member.display_name}")
         
     except discord.Forbidden:
