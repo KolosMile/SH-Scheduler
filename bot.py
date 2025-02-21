@@ -573,7 +573,7 @@ async def checkuserroles(ctx, user_id: int):
     await ctx.send(f"{member.mention} rangjai: {', '.join(role_names)}")
 
 @bot.command()
-async def add_sh_role(ctx):
+async def add_sh_role_all(ctx):
     """Parancs, amely az összes role_id2-vel rendelkező felhasználónak megadja a role_id1 rangot."""
     guild = ctx.guild
     role1 = guild.get_role(role_id)  # role_id1
@@ -596,6 +596,39 @@ async def add_sh_role(ctx):
                 print(f"Hiba történt {member.name} SH rangjának hozzáadásakor: {e}")
     
     print(f"Összesen {count} felhasználónak adtam meg az SH rangot.")
+
+@bot.command()
+async def add_sh_role(ctx, user_id: int):
+    """Egy adott felhasználónak adja az SH rangot"""
+    try:
+        # Guild és szerepek lekérése
+        guild = ctx.guild
+        role = guild.get_role(role_id)
+        
+        if not role:
+            await ctx.send("Nem található az SH rang a szerveren!")
+            return
+            
+        # Felhasználó keresése
+        member = guild.get_member(user_id)
+        if not member:
+            await ctx.send(f"Nem található felhasználó ezzel az ID-vel: {user_id}")
+            return
+            
+        # Ha már van neki SH rang
+        if role in member.roles:
+            await ctx.send(f"{member.mention} már rendelkezik SH ranggal.")
+            return
+            
+        # Rang hozzáadása
+        await member.add_roles(role)
+        await ctx.send(f"SH rang sikeresen hozzáadva: {member.mention}", delete_after=5)
+        print(f"SH rang hozzáadva: {member.display_name}")
+        
+    except discord.Forbidden:
+        await ctx.send("Nincs jogosultságom a rang módosításához!")
+    except Exception as e:
+        await ctx.send(f"Hiba történt: {e}")
 
 @bot.command()
 async def rebuild_and_evaluate(ctx, message_id: int):
