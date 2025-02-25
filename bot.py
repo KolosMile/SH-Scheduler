@@ -134,7 +134,7 @@ async def send_daily_message():
     role = guild.get_role(role_id)
     role_mention = role.mention if role else "@SH"
     text = (
-        f"{role_mention} ** ( {datetime.now().strftime('%Y-%m-%d')} ) "
+        f"{role_mention} ** ( {(datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')} ) "
         "mikor értek rá SH-ra? Reakciókkal jelöljétek!**\n\n"
         "1️⃣ - 18-19\n"
         "2️⃣ - 19-20\n"
