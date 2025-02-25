@@ -86,7 +86,7 @@ role_id_clan = 830498818113798215
 user_lock = set()  # Azok a felhasználók, akik éppen reagálnak
 
 message_time = {
-    "send": time(hour=5, minute=0, second=0), 
+    "send": time(hour=21, minute=0, second=0), 
     "reminder": time(hour=15, minute=45, second=0),
     "evaluate": time(hour=16, minute=45, second=0)
     }  # Az üzenet pontos időpontja
@@ -134,7 +134,7 @@ async def send_daily_message():
     role = guild.get_role(role_id)
     role_mention = role.mention if role else "@SH"
     text = (
-        f"{role_mention} **Ma ( {datetime.now().strftime('%Y-%m-%d')} ) "
+        f"{role_mention} ** ( {datetime.now().strftime('%Y-%m-%d')} ) "
         "mikor értek rá SH-ra? Reakciókkal jelöljétek!**\n\n"
         "1️⃣ - 18-19\n"
         "2️⃣ - 19-20\n"
